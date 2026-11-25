@@ -1,105 +1,112 @@
 Product Requirements Document: Hostel Fault and Repair Tracker
-Course: BU-209 Backend Engineering
-Date: November 23, 2026
-File: PRD.md
-
-1. The Problem
-Students living in campus hostels have a hard time when things break in their rooms or other areas, like power problems, water leaks, broken fans, or bad drainage. Right now, people report problems by talking to hall staff, sending chat messages, or writing in a paper book. Because there is no proper tracking system, complaints get forgotten, people keep asking for updates, and multiple students report the same broken thing in the same room or corridor. If nobody fixes these issues early, small problems turn into bigger ones and students stay uncomfortable.
-
-2. Who Uses It
-- Student: Sends a report when something breaks in a room or shared space, checks if anything is happening with the report, and confirms when it is fixed.
-- Hall Coordinator: Checks new reports for the hostel, spots repeat reports for the same place and problem, picks how urgent it is, and gives the job to a repair man.
-- Repair Worker: Sees the jobs given to them, marks when they start and finish the work, and writes a short note on what they fixed.
-
-3. How People Cope Right Now and Why It Fails
-How people handle it now:
-- Telling hall workers face-to-face or dropping a message in a group chat.
-- Writing complaints in a paper notebook or a basic list.
-- Going back to ask again when nothing seems to happen.
-
-Why this does not work well:
-- No single place to check: Details are spread across chats, paper books, and people's heads, so nobody has a clear view of what is going on.
-- Hard to trace delays: Without a record of who changed what and when, it is hard to see where a complaint got stuck.
-- Too many repeat reports: If four roommates or corridor mates report the same fault, it creates multiple reports of the same thing and hides other issues.
-- Retry and double-update issues: If someone sends a report twice because of bad network, or two staff members update the same item at the same time, things can clash or get duplicated.
-
-4. Our Idea (Before Picking a Programming Language)
-We want to build a main backend service that tracks every fault step by step, checks who is allowed to do each action, spots likely repeat reports, stops double creation when a request is retried, and keeps a full history log of every status change. We are focusing on how the system works and what data it holds first, before picking any programming language or database.
-
-How the flow works:
-1. A logged-in student sends a fault report with the place (hostel, floor, room or other areas), type of problem (electrical, water, cleaning, other), how serious it is (low, medium, high, urgent), a short title, a description, and a retry key.
-2. The backend checks the inputs and permissions, looks for recent open reports with the same place and problem type, marks a possible match if found, saves the report as OPEN, and adds a first entry to the history log.
-3. A hall coordinator checks OPEN reports, sets or keeps the urgency level, picks a repair man, and changes the status to ASSIGNED.
-4. The repair man starts fixing it and changes the status to IN_PROGRESS.
-5. When the fix is done, the repair man writes a short note about the repair and changes the status to RESOLVED.
-6. The student who sent the report checks the fix:
-   - If it works, the student marks it as CLOSED.
-   - If the problem is still there, the student marks it as REOPENED and writes why, so a coordinator can assign it again (REOPENED to ASSIGNED).
-
-5. First Version (MVP)
-What we will build in version 1:
-- Basic user login and role checks so students, coordinators, and repair men can only do what they are allowed to do.
-- Endpoints to create a report, view one report with its history, list and filter reports (by status, hostel, problem type, urgency, or repair worker) with page limits, and edit allowed notes or details.
-- Strict rules for moving between statuses so nobody can jump straight from OPEN to CLOSED or make changes they are not allowed to make.
-- Checking recent active reports in the same place and problem type when a new report comes in, and saving a link to a possible match without deleting the new report.
-- A history log table that records every status change, who did it, any note, and the time, without letting people wipe past history.
-- Retry protection on report creation using a key so a bad connection retry does not make two identical reports.
-
-What we will leave out of version 1:
-- Sending SMS, email, or push alerts.
-- Uploading photos or videos.
-- Building a mobile app or fancy frontend screens.
-- Automatic timers, charts/reports, or scheduled checkups.
-- Connecting to school-wide management systems.
-
-6. Backend Details
-Main data tables / records:
-- User: id, full name, email, role (student, coordinator, repair worker), assigned hostel if needed, active status, created and updated times.
-- Hostel: id, name, short code.
-- Place: id, hostel id, floor, room or area, whether it is an other area.
-- FaultReport: id, tracking code (like FLT-001), student id who reported it, place id, problem type, urgency level, current status, assigned repair worker id, possible duplicate report id, title, description, fix note, version number, and times for created, updated, resolved, and closed.
-- StatusLog: id, report id, old status, new status, user id who made the change, note, and time.
-- RetryKey: key value, user id, request hash, saved status code, saved reply data, created time, and expiry time.
-
-Status rules:
-- New report -> OPEN (by student)
-- OPEN -> ASSIGNED (by coordinator, must pick an active repair worker)
-- ASSIGNED -> IN_PROGRESS (by assigned repair worker or coordinator)
-- IN_PROGRESS -> RESOLVED (by assigned repair worker or coordinator, must include a fix note)
-- RESOLVED -> CLOSED (by the student who reported it)
-- RESOLVED -> REOPENED (by the student who reported it, must include a reason note)
-- REOPENED -> ASSIGNED (by coordinator, must pick an active repair worker)
-
-Any other status jump is blocked. Also:
-- Students can only close or reopen their own reports.
-- Coordinators handle reports for their own hostel.
-- Repair workers only update jobs assigned to them.
-- Duplicate check looks for active reports (OPEN, ASSIGNED, IN_PROGRESS, REOPENED) in the last 14 days with the same place and problem type, and links the earliest one as a possible duplicate.
-
-Error responses:
-- 400 / 422: Missing info, bad choice values, or missing fix note when marking RESOLVED.
-- 401 / 403: Not logged in, or trying to do something outside your role or hostel.
-- 404: Report, place, or repair worker does not exist.
-- 409: Bad status change, old version number clash during simultaneous edits, or reusing the same retry key with different data.
-
-Other system needs:
-- Use a version check when updating a report so two people editing at the exact same time do not overwrite each other silently.
-- Add database indexes on common search fields (hostel + status + date, repair worker + status, place + problem type + status) so searches stay fast.
-- Validate all inputs on the server, use safe database queries, and do not leak internal error details.
-- Log key actions with request id, user id, role, report id, and result.
-
-7. How We Know It Works, Assumptions, and Risks
-Checks for version 1:
-- Tests pass for all allowed status moves, blocked status moves, and role limits.
-- Retrying a report request with the same key does not create a second report, and stale version edits return a conflict error.
-- Every report has a status log entry from the start, and every status change adds another log entry.
-- List and filter calls stay fast in local testing.
-
-Assumptions:
-- Users, hostels, places, and repair worker accounts already exist in the system before testing.
-- Times are stored in a consistent format.
-
-Risks and how we handle them:
-- Adding too many extra features too early can slow us down, so we stick strictly to the core flow in version 1.
-- Two coordinators updating a report at once could clash, so we use version checks and transactions.
-- Students submitting repeat reports for the same issue could cause confusion, so we link possible matches automatically.
+Course: BU-209 Backend Engineering  
+Date: November 25, 2026
+---
+1. Product Overview
+The Hostel Fault and Repair Tracker is a main backend service that helps campus hostels track broken things from start to finish. Instead of losing complaints in group chats or paper books, the system logs every fault, checks who is allowed to update it, spots repeat reports for the same issue, stops duplicate entries when the network is bad, and keeps a permanent history of every change. Right now, we are focusing on how the system works and what data it saves, before picking a programming language or database.
+---
+2. Problem Statement
+Students living in campus hostels have a hard time when things break in their rooms or shared spaces, such as power cuts, water leaks, broken fans, or bad drainage.
+Right now, people report problems by talking to hall staff face-to-face, dropping messages in group chats, or writing in a paper notebook. Because there is no single place to track these issues:
+Complaints get forgotten, and students keep going back to ask for updates.
+There is no record of who changed what and when, making it hard to see where delays happen.
+Multiple students in the same room or corridor report the exact same broken item, creating clutter and hiding other urgent issues.
+Bad network retries or two staff members editing at the same time can create double records or overwrite updates.
+If small problems are not fixed early, they turn into bigger, more expensive problems and leave students uncomfortable.
+---
+3. Business Objectives
+Stop lost complaints: Give hostel staff one clear place to see and track every broken item until it is fixed.
+Fix things faster: Help coordinators assign jobs quickly and spot where repairs are getting stuck.
+Cut down on repeat work: Automatically flag when multiple students report the same issue in the same spot so repair workers do not waste time.
+Keep clear records: Save a permanent history of every update so everyone is accountable for their part of the job.
+---
+4. Target Users
+Student: Lives in the hostel, reports broken items in their room or shared spaces, checks the progress of their report, and confirms when the fix actually works.
+Hall Coordinator: Manages reports for their assigned hostel, spots repeat reports, sets how urgent a problem is, and assigns the job to a repair worker.
+Repair Worker: Views the repair jobs given to them, marks when they start and finish the work, and writes a short note explaining what they fixed.
+---
+5. Stakeholders
+Students: Want a fast, easy way to report broken things and know when they will be fixed.
+Hall Coordinators: Need a clean, organized list of faults so they can manage hostel upkeep without getting flooded by duplicate messages.
+Repair Workers: Need clear job details (exact room, problem type, and urgency) so they can bring the right tools and fix the issue.
+School Hostel Management: Wants safer, better-maintained hostels, fewer big repair bills, and proof that student complaints are being handled.
+Backend Engineering Team (BU-209): Responsible for building, testing, and keeping the backend service reliable and secure.
+---
+6. User Stories
+As a Student, I want to send a fault report with my room details and problem type so that hostel staff know something is broken.
+As a Student, I want to check the status of my report so I do not have to keep walking to the porter's lodge to ask for updates.
+As a Student, I want to close my report when the fix works—or reopen it with a note if it is still broken—so the issue is truly solved.
+As a Hall Coordinator, I want to filter open reports by urgency and problem type so I can handle emergencies first.
+As a Hall Coordinator, I want the system to flag possible repeat reports so I can link them instead of sending two workers to the same room.
+As a Hall Coordinator, I want to assign a report to an active repair worker in my hostel so the work gets started.
+As a Repair Worker, I want to see all jobs assigned to me and update them when I start and finish so everyone knows my progress.
+As a Repair Worker, I want to add a short note when I finish a job so the coordinator and student know what was done.
+---
+7. Functional Requirements
+Core Data Records
+User: ID, full name, email, role (student, coordinator, repair worker), assigned hostel (if needed), active status, and created/updated times.
+Hostel: ID, name, and short code.
+Place: ID, hostel ID, floor, room or area name, and whether it is a shared space.
+FaultReport: ID, tracking code (like `FLT-001`), student ID, place ID, problem type (electrical, water, cleaning, other), urgency level (low, medium, high, urgent), current status, assigned repair worker ID, possible repeat report ID, title, description, fix note, version number, and times for created, updated, resolved, and closed.
+StatusLog: ID, report ID, old status, new status, user ID who made the change, note, and time.
+RetryKey: Key value, user ID, request hash, saved status code, saved reply data, created time, and expiry time.
+Step-by-Step Workflow & Status Rules
+The system must enforce strict rules so nobody can skip steps or make changes outside their role:
+New Report $\rightarrow$ `OPEN` (Student): Student sends a report with place, problem type, urgency, title, description, and a retry key.
+`OPEN` $\rightarrow$ `ASSIGNED` (Coordinator): Coordinator for that hostel reviews the report, sets or keeps the urgency, and picks an active repair worker.
+`ASSIGNED` $\rightarrow$ `IN_PROGRESS` (Assigned Repair Worker or Coordinator): Worker marks that they have started the repair.
+`IN_PROGRESS` $\rightarrow$ `RESOLVED` (Assigned Repair Worker or Coordinator): Worker marks the job done and must include a short fix note.
+`RESOLVED` $\rightarrow$ `CLOSED` (Original Student): Student checks the repair, sees that it works, and closes the report.
+`RESOLVED` $\rightarrow$ `REOPENED` (Original Student): Student checks the repair, sees it is still broken, and reopens it with a note explaining why.
+`REOPENED` $\rightarrow$ `ASSIGNED` (Coordinator): Coordinator assigns the reopened fault to an active repair worker again.
+Any other status jump (like going straight from `OPEN` to `CLOSED`) must be blocked.
+Smart Checks & Protections
+Repeat Report Detection: When a new report arrives, the system checks for active reports (`OPEN`, `ASSIGNED`, `IN_PROGRESS`, `REOPENED`) from the last 14 days with the exact same place and problem type. If found, it saves the new report anyway but links the oldest match as a possible repeat.
+Retry Protection: Report creation requires a retry key. If a student's bad network sends the exact same request twice, the system returns the saved reply instead of creating a second report.
+Permanent History Log: Every new report and every status change adds a new entry to `StatusLog`. Nobody is allowed to edit or delete past log entries.
+Search and Filters: Users can view a single report with its full history, or list reports filtered by status, hostel, problem type, urgency, or repair worker using page limits.
+Clear Error Responses
+400 / 422 (Bad Input): Missing fields, invalid choices, or trying to mark a report `RESOLVED` without a fix note.
+401 / 403 (Not Allowed): User is not logged in, or is trying to touch a report outside their role, hostel, or ownership.
+404 (Not Found): The report, place, or repair worker ID does not exist.
+409 (Conflict): Trying to make a blocked status jump, editing an outdated version of a report at the same time as someone else, or reusing a retry key with different details.
+---
+8. Non-Functional Requirements
+Safe Simultaneous Edits: Use a version number check when updating a report so if two coordinators edit the same report at the exact same second, one gets a conflict warning instead of silently overwriting the other's work.
+Fast Searches: Add database indexes on common search combos (`hostel + status + date`, `repair worker + status`, and `place + problem type + status`) so filtering stays fast as reports grow.
+Security & Input Safety: Check all inputs on the server, use safe database queries to prevent data attacks, and never show raw system crash details to users.
+Audit Logging: Record key system actions with a request ID, user ID, role, report ID, and result so developers can trace bugs easily.
+Consistent Time Format: Store all timestamps in one standard format (such as UTC) so logs and 14-day repeat checks are always accurate.
+---
+9. Scope and Priorities
+Included in Version 1 (MVP)
+Basic user login and role-based permission checks.
+Endpoints to create, view, list, filter, and update fault reports.
+Strict status step rules and permanent status history logs.
+Automatic 14-day repeat report detection and linking.
+Retry key protection for creating reports and version checks for updates.
+Out of Scope for Version 1 (Future Updates)
+Sending SMS, email, or phone push alerts.
+Uploading photos or videos of broken items.
+Building a mobile app or visual frontend screens.
+Automatic reminder timers, summary charts, or scheduled checkups.
+Connecting to other school-wide student management systems.
+---
+10. Acceptance Criteria
+We will know Version 1 is ready when all of these checks pass:
+Role Limits Work: A student cannot assign a worker, a repair worker cannot close a report, and a coordinator cannot edit reports from a different hostel.
+Status Rules Hold: All 7 allowed status moves succeed, and any skipped or backward jump returns a `409` conflict error.
+Notes Are Enforced: Marking a report `RESOLVED` without a fix note, or `REOPENED` without a reason note, is blocked with a `400/422` error.
+Repeat Check Works: Sending two reports for the same room and problem type within 14 days saves both, and links the second report to the first.
+Retry & Version Checks Work: Sending the same create request twice with the same retry key creates only one report. Two people editing the same report version at once triggers a `409` error for the second person.
+History Is Complete: Every report starts with an `OPEN` entry in `StatusLog`, and every status change adds a new row that cannot be deleted.
+Speed: Filtering and listing reports returns results quickly during local testing without slowdowns.
+---
+11. Assumptions and Open Questions
+Assumptions
+User accounts, hostels, floors, rooms, and active repair worker profiles already exist in the system before students start reporting faults.
+Every API client (such as a future web or mobile app) will generate and send a unique retry key when creating a new fault report.
+Open Questions
+Login Method: Should Version 1 use simple token login (like JWT) or basic session headers while we focus on the core backend logic?
+Reopen Limit: Should there be a limit on how many times a student can reopen the same report before a senior manager steps in?
+Repeat Window: Is 14 days the right time window for spotting repeat reports, or should urgent issues (like water leaks) use a shorter window?
