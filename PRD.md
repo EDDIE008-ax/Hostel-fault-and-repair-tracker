@@ -1,4 +1,4 @@
-Product Requirements Document: Hostel Fault and Repair Tracker
+Product Requirements Document: Hostel Repair Manager
 Course: BU-209 Backend Engineering  
 Date: November 23, 2026
 ---
