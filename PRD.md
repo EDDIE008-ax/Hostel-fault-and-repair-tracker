@@ -1,6 +1,6 @@
 Product Requirements Document: Hostel Fault and Repair Tracker
 Course: BU-209 Backend Engineering  
-Date: November 25, 2026
+Date: November 23, 2026
 ---
 1. Product Overview
 The Hostel Fault and Repair Tracker is a main backend service that helps campus hostels track broken things from start to finish. Instead of losing complaints in group chats or paper books, the system logs every fault, checks who is allowed to update it, spots repeat reports for the same issue, stops duplicate entries when the network is bad, and keeps a permanent history of every change. Right now, we are focusing on how the system works and what data it saves, before picking a programming language or database.
